@@ -115,7 +115,7 @@ class LoginView(APIView):
         summary="Login with credentials",
         description="Login with matric_number/password for students or \
             staff_id/password for lecturers",
-        tags=["Authentication"]
+        tags=["auth"]
     )
     def post(self, request, *args, **kwargs):
         serializer = LoginSerializer(data=request.data)

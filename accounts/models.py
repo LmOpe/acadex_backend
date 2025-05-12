@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import (
-    AbstractUser,
+    AbstractBaseUser,
     BaseUserManager,
     PermissionsMixin
 )
@@ -27,7 +27,7 @@ class UserManager(BaseUserManager):
 
         return self.create_user(first_name, last_name, password, **extra_fields)
 
-class User(AbstractUser, PermissionsMixin):
+class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = (
         ('STUDENT', 'Student'),
         ('LECTURER', 'Lecturer'),
@@ -36,7 +36,7 @@ class User(AbstractUser, PermissionsMixin):
 
     first_name = models.CharField(max_length=30)
     last_name = models.CharField(max_length=30)
-    email = models.EmailField(unique=True, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
 
     is_active = models.BooleanField(default=True)
@@ -46,20 +46,28 @@ class User(AbstractUser, PermissionsMixin):
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name']
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['email'],
+                condition=models.Q(email__isnull=False),
+                name='unique_email_not_null')
+        ]
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
 class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
-    matric_number = models.CharField(max_length=15, unique=True)
+    matric_number = models.CharField(primary_key=True, max_length=15, unique=True)
 
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name} - {self.matric_number}"
 
 class Lecturer(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='lecturer_profile')
-    staff_id = models.CharField(max_length=15, unique=True)
+    staff_id = models.CharField(primary_key=True, max_length=15, unique=True)
 
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name} - {self.staff_id}"
