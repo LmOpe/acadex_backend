@@ -3,7 +3,11 @@ from django.db import models
 
 class Course(models.Model):
     course_id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
-    instructor = models.ForeignKey('accounts.Lecturer', on_delete=models.CASCADE, related_name='courses')
+    instructor = models.ForeignKey(
+        'accounts.Lecturer',
+        on_delete=models.CASCADE,
+        related_name='courses'
+    )
     course_code = models.CharField(max_length=10)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
