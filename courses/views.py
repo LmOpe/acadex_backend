@@ -115,3 +115,27 @@ class CourseEnrollmentView(APIView):
         enrollments = CourseEnrollment.objects.filter(course=course)
         serializer = CourseEnrollmentSerializer(enrollments, many=True)
         return Response(serializer.data)
+
+class StudentEnrollmentsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={
+            200: CourseEnrollmentSerializer(many=True),
+            401: api_401,
+            400: api_400,
+        },
+        tags=["CourseEnrollmments"],
+        summary="List all courses a student is enrolled in",
+        description="This endpoint allows students to list all courses they are enrolled in. "
+                    "Only authenticated students can access this endpoint.",
+    )
+    def get(self, request):
+        if not hasattr(request.user, 'student_profile'):
+            return Response(
+                {"detail": "You do not have permission to perform this action."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        enrollments = CourseEnrollment.objects.filter(student=request.user.student_profile)
+        serializer = CourseEnrollmentSerializer(enrollments, many=True)
+        return Response(serializer.data)
