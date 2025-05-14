@@ -17,7 +17,7 @@ class CourseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['course_id', 'instructor_name','created_at']
         
-    def get_instructor_name(self, obj):
+    def get_instructor_name(self, obj) -> str:
         return f"{obj.instructor.user.first_name} {obj.instructor.user.last_name}"
     
     def validate(self, attrs):
@@ -67,10 +67,10 @@ class CourseEnrollmentSerializer(serializers.ModelSerializer):
             if course:
                 self.initial_data['course'] = course.pk
 
-    def get_student_name(self, obj):
+    def get_student_name(self, obj) -> str:
         return f"{obj.student.user.first_name} {obj.student.user.last_name}"
     
-    def get_course_title(self, obj):
+    def get_course_title(self, obj) -> str:
         return obj.course.title
 
     def validate(self, data):

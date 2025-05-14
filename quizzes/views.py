@@ -13,7 +13,7 @@ from accounts.models import Student, Lecturer
 from .models import Quiz
 from .serializers import QuizSerializer
 
-
+from acadex.permissions import IsCourseInstructor
 from acadex.schemas import api_400, api_401, api_403
 
 class QuizCreateView(APIView):
@@ -91,3 +91,29 @@ class QuizCreateView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class QuizListView(APIView):
+    """
+    API view to list quizzes for a course. 
+    Students see active quizzes, and lecturers can see quizzes with a filter for `is_active`.
+    """
+    permission_classes = [IsAuthenticated, IsCourseInstructor]
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        if hasattr(user, 'student_profile'):
+            student = user.student_profile
+            enrolled_courses = CourseEnrollment.objects.filter(student=student).values_list('course', flat=True)
+            quizzes = Quiz.objects.filter(course__in=enrolled_courses, is_active=True)
+        elif hasattr(user, 'lecturer_profile'):
+            lecturer = user.lecturer_profile
+            courses = Course.objects.filter(instructor=lecturer)
+            is_active = request.query_params.get('is_active', None)
+            if is_active is not None:
+                quizzes = Quiz.objects.filter(course__in=courses, is_active=is_active)
+            else:
+                quizzes = Quiz.objects.filter(course__in=courses)
+        else:
+            quizzes = Quiz.objects.none()
+
+        serializer = QuizSerializer(quizzes, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
