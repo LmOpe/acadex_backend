@@ -1,4 +1,6 @@
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -6,8 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from drf_spectacular.utils import extend_schema, OpenApiExample
 
-from .models import Course
-from .serializers import CourseSerializer
+from .models import Course, CourseEnrollment
+from .serializers import CourseSerializer, CourseEnrollmentSerializer
 
 from acadex.schemas import api_400, api_401
 
@@ -19,6 +21,7 @@ class CourseListCreateView(APIView):
         responses={
             201: CourseSerializer,
             400: api_400,
+            401: api_401,
         },
         examples=[
             OpenApiExample(
@@ -66,3 +69,27 @@ class CourseListCreateView(APIView):
         courses = Course.objects.filter(filters).distinct().order_by('course_code')
         serializer = CourseSerializer(courses, many=True)
         return Response(serializer.data)
+
+class CourseEnrollmentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={
+            200: CourseEnrollmentSerializer,
+            401: api_401,
+            400: api_400,
+        },
+        tags=["CourseEnrollmments"],
+        summary="Enroll in a course",
+        description="This endpoint allows students to enroll in a course. "
+                    "Only authenticated students can access this endpoint.",
+    )
+    def post(self, request, course_id):
+        course = get_object_or_404(Course, course_id=course_id)
+        serializer = CourseEnrollmentSerializer(
+            data=request.data, 
+            context={'request': request, 'course': course})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -41,7 +41,7 @@ class CourseSerializer(serializers.ModelSerializer):
     
 class CourseEnrollmentSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField(read_only=True)
-    course_title = serializers.SerializerMethodField(source='course.title', read_only=True)
+    course_title = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = CourseEnrollment
@@ -55,11 +55,27 @@ class CourseEnrollmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['enrollment_id', 'student_name', 'course_title', 'enrollment_date']
         
-        def get_student_name(self, obj):
-            return f"{obj.student.user.first_name} {obj.student.user.last_name}"
-        
-        def create(self, validated_data):
-            request = self.context.get('request')
-            if request and hasattr(request.user, 'student'):
-                validated_data['student'] = request.user.student
-            return super().create(validated_data)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'context' in kwargs:
+            request = kwargs['context'].get('request')
+            course = kwargs['context'].get('course')
+            if request and hasattr(request.user, 'student_profile'):
+                self.initial_data['student'] = request.user.student_profile.pk
+            else:
+                raise serializers.ValidationError("Authenticated user is not a student.")
+            if course:
+                self.initial_data['course'] = course.pk
+
+    def get_student_name(self, obj):
+        return f"{obj.student.user.first_name} {obj.student.user.last_name}"
+    
+    def get_course_title(self, obj):
+        return obj.course.title
+
+    def validate(self, data):
+        student = data.get('student')
+        course = data.get('course')
+        if CourseEnrollment.objects.filter(student=student, course=course).exists():
+            raise serializers.ValidationError("This student is already enrolled in this course.")
+        return data
