@@ -1,6 +1,12 @@
 from django.shortcuts import get_object_or_404
+from collections import defaultdict
 
-from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import (
+    extend_schema,
+    OpenApiExample,
+    OpenApiResponse,
+    OpenApiParameter,
+    )
 
 from rest_framework import status
 from rest_framework.views import APIView
@@ -11,10 +17,11 @@ from courses.models import Course, CourseEnrollment
 from accounts.models import Student, Lecturer
 
 from .models import Quiz
-from .serializers import QuizSerializer
+from .serializers import QuizSerializer, CourseNestedSerializer
 
 from acadex.permissions import IsCourseInstructor
 from acadex.schemas import api_400, api_401, api_403
+from acadex.utils import str_to_bool
 
 class QuizCreateView(APIView):
     """
@@ -98,6 +105,58 @@ class QuizListView(APIView):
     Students see active quizzes, and lecturers can see quizzes with a filter for `is_active`.
     """
     permission_classes = [IsAuthenticated, IsCourseInstructor]
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=QuizSerializer(many=True),
+                description="List of quizzes for the course.",
+                examples=[
+                    OpenApiExample(
+                        name="Quizzes List",
+                        value=[
+                                {
+                                    "course_id": "4e798140-66aa-40cb-84d4-6653ce0a7392",
+                                    "course_details": {
+                                    "course_id": "4e798140-66aa-40cb-84d4-6653ce0a7392",
+                                    "title": "Introduction to Computer Science",
+                                    "course_code": "CSC111",
+                                    "lecturer_name": "John Doe"
+                                    },
+                                    "quizzes": [
+                                    {
+                                        "id": "be7b6439-a3fb-4428-a653-279763c900b7",
+                                        "title": "Midterm Quiz",
+                                        "instructions": "Answer all questions. No external help.",
+                                        "course": "4e798140-66aa-40cb-84d4-6653ce0a7392",
+                                        "start_date_time": "2025-05-14T01:52:37.900000Z",
+                                        "end_date_time": "2025-05-14T01:52:37.900000Z",
+                                        "number_of_questions": 10,
+                                        "allotted_time": "00:30:00",
+                                        "is_active": True,
+                                        "created_at": "2025-05-14T02:01:56.850857Z"
+                                    }
+                                ]
+                            }
+                        ]
+                    )
+                ]
+            ),
+            403: api_403,
+            401: api_401,
+            400: api_400,
+        },
+        parameters=[
+            OpenApiParameter(
+                name="is_active",
+                type=bool,
+                required=False,
+                description="Lecturers filter quizzes by active status. True for active quizzes, False for inactive quizzes."
+            )
+        ],
+        summary="List quizzes for a course",
+        description="This endpoint allows students to list active quizzes and lecturers to filter quizzes by `is_active` status.",
+        tags=["Quizzes"],
+    )
     def get(self, request, *args, **kwargs):
         user = request.user
         if hasattr(user, 'student_profile'):
@@ -109,11 +168,31 @@ class QuizListView(APIView):
             courses = Course.objects.filter(instructor=lecturer)
             is_active = request.query_params.get('is_active', None)
             if is_active is not None:
+                is_active = str_to_bool(is_active)
                 quizzes = Quiz.objects.filter(course__in=courses, is_active=is_active)
             else:
                 quizzes = Quiz.objects.filter(course__in=courses)
         else:
-            quizzes = Quiz.objects.none()
+            return Response([])
 
-        serializer = QuizSerializer(quizzes, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        grouped_data = defaultdict(lambda: {"course_details": None, "quizzes": []})
+
+        for quiz in quizzes:
+            course = quiz.course
+            course_id = str(course.course_id)
+
+            if grouped_data[course_id]["course_details"] is None:
+                grouped_data[course_id]["course_details"] = CourseNestedSerializer(course).data
+
+            grouped_data[course_id]["quizzes"].append(QuizSerializer(quiz).data)
+
+        result = [
+            {
+                "course_id": course_id,
+                "course_details": data["course_details"],
+                "quizzes": data["quizzes"]
+            }
+            for course_id, data in grouped_data.items()
+        ]
+
+        return Response(result)

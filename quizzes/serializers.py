@@ -1,4 +1,8 @@
 from rest_framework import serializers
+
+
+from courses.models import Course
+
 from .models import Quiz
 
 
@@ -21,3 +25,13 @@ class QuizSerializer(serializers.ModelSerializer):
             'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+class CourseNestedSerializer(serializers.ModelSerializer):
+    lecturer_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Course
+        fields = ['course_id', 'title', 'course_code', 'lecturer_name']
+
+    def get_lecturer_name(self, obj):
+        return f"{obj.instructor.user.first_name} {obj.instructor.user.last_name}"
