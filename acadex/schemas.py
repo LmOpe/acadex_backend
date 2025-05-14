@@ -11,6 +11,9 @@ class Error400Serializer(Serializer):
 class Error401Serializer(Serializer):
     detail = CharField(default="Unauthorized", help_text="Error message")
 
+class Error403Serializer(Serializer):
+    detail = CharField(default="Forbidden", help_text="Error message")
+
 api_400 = OpenApiResponse(
     response=Error400Serializer,
     description="Bad Request",
@@ -31,6 +34,18 @@ api_401 = OpenApiResponse(
             'Unauthorized access',
             value={'detail': 'Authentication credentials were not provided'},
             status_codes=[str(status.HTTP_401_UNAUTHORIZED)],
+        ),
+    ]
+)
+
+api_403 = OpenApiResponse(
+    response=Error403Serializer,
+    description="Forbidden",
+    examples=[
+        OpenApiExample(
+            'Forbidden access',
+            value={'detail': 'You do not have permission to perform this action.'},
+            status_codes=[str(status.HTTP_403_FORBIDDEN)],
         ),
     ]
 )
