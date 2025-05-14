@@ -31,7 +31,7 @@ class CourseNestedSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ['course_id', 'title', 'course_code', 'lecturer_name']
+        fields = ['title', 'course_code', 'lecturer_name']
 
     def get_lecturer_name(self, obj):
         return f"{obj.instructor.user.first_name} {obj.instructor.user.last_name}"
