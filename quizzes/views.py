@@ -1,4 +1,3 @@
-from django.shortcuts import get_object_or_404
 from collections import defaultdict
 
 from drf_spectacular.utils import (
@@ -14,16 +13,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from courses.models import Course, CourseEnrollment
-from accounts.models import Student, Lecturer
 
-from .models import Quiz
+from .models import Quiz, Question
 from .serializers import (
     QuizSerializer,
     CourseNestedSerializer,
     QuizUpdateSerializer,
+    QuestionCreateSerializer,
 )
 
-from acadex.permissions import IsCourseInstructor
+from acadex.permissions import IsCourseInstructor, IsLecturer
 from acadex.schemas import api_400, api_401, api_403
 from acadex.utils import str_to_bool
 
@@ -252,3 +251,97 @@ class QuizDetailView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class QuestionCreateView(APIView):
+    permission_classes = [IsAuthenticated, IsCourseInstructor]
+    serializer_class = QuestionCreateSerializer
+
+    @extend_schema(
+        request=QuestionCreateSerializer(many=True),
+        responses={201: QuestionCreateSerializer(many=True)},
+        examples=[
+            OpenApiExample(
+                name="Bulk Question and Answer Creation",
+                value=[
+                    {
+                        "text": "What is the capital of France?",
+                        "answers": [
+                            {"text": "Paris", "is_correct": True},
+                            {"text": "Lyon", "is_correct": False},
+                            {"text": "Marseille", "is_correct": False}
+                        ]
+                    },
+                    {
+                        "text": "Which planet is known as the Red Planet?",
+                        "answers": [
+                            {"text": "Earth", "is_correct": False},
+                            {"text": "Mars", "is_correct": True},
+                            {"text": "Jupiter", "is_correct": False}
+                        ]
+                    }
+                ],
+                request_only=True
+            )
+        ],
+        description=(
+            "Create multiple questions and answers for a given quiz."
+            "Each question must have at least one correct answer."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="quiz_id",
+                type=str,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="ID of the quiz"
+            )
+        ]
+    )
+    def post(self, request, quiz_id):
+        try:
+            quiz = Quiz.objects.get(id=quiz_id)
+        except Quiz.DoesNotExist:
+            return Response(
+                {"detail": "Quiz not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        self.check_object_permissions(request, quiz)
+
+        if Question.objects.filter(quiz=quiz).exists():
+            return Response(
+                {"detail": "Questions have already been set for this quiz."},
+                status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        expected_count = quiz.number_of_questions
+        actual_count = len(request.data)
+        if actual_count != expected_count:
+            return Response(
+                {
+                    "detail":
+                        (
+                            f"Expected {expected_count} questions, "
+                            f"but got {actual_count}."
+                        )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.serializer_class(
+            data=request.data,
+            many=True,
+            context={'quiz': quiz}
+        )
+        if serializer.is_valid():
+            questions = serializer.save()
+            return Response(
+                {"data": QuestionCreateSerializer(questions, many=True).data},
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )

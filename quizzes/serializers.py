@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from courses.models import Course
 
-from .models import Quiz
+from .models import Quiz, Question, Answer
 
 
 class QuizSerializer(serializers.ModelSerializer):
@@ -26,6 +26,7 @@ class QuizSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at']
 
+
 class CourseNestedSerializer(serializers.ModelSerializer):
     lecturer_name = serializers.SerializerMethodField()
 
@@ -35,6 +36,7 @@ class CourseNestedSerializer(serializers.ModelSerializer):
 
     def get_lecturer_name(self, obj):
         return f"{obj.instructor.user.first_name} {obj.instructor.user.last_name}"
+
 
 class QuizUpdateSerializer(serializers.ModelSerializer):
     """
@@ -51,7 +53,7 @@ class QuizUpdateSerializer(serializers.ModelSerializer):
             'number_of_questions',
             'allotted_time',
             'is_active',
-            ]
+        ]
 
     def to_internal_value(self, data):
         allowed_fields = set(self.fields.keys())
@@ -63,3 +65,40 @@ class QuizUpdateSerializer(serializers.ModelSerializer):
             })
 
         return super().to_internal_value(data)
+
+
+class AnswerCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Answer
+        fields = ['text', 'is_correct']
+
+
+class QuestionCreateSerializer(serializers.ModelSerializer):
+    answers = AnswerCreateSerializer(many=True, write_only=True)
+
+    class Meta:
+        model = Question
+        fields = ['id', 'text', 'answers']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        quiz = self.context.get('quiz')
+        answers_data = validated_data.pop('answers')
+        question = Question.objects.create(quiz=quiz, **validated_data)
+        Answer.objects.bulk_create([
+            Answer(question=question, **answer) for answer in answers_data
+        ])
+        return question
+
+    def validate_answers(self, value):
+        """
+        Validates the list of answers for a question.
+
+        Ensures that at least one answer is marked as correct.
+        Raises a validation error if no correct answer is provided.
+        """
+        if not any(ans.get('is_correct') for ans in value):
+            raise serializers.ValidationError(
+                "At least one answer must be marked correct."
+            )
+        return value
