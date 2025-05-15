@@ -21,6 +21,6 @@ class Quiz(models.Model):
     allotted_time = models.DurationField(help_text="Format: HH:MM:SS")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return f"{self.title} - {self.course.course_code}"

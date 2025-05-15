@@ -9,5 +9,6 @@ class IsCourseInstructor(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if not request.user.is_authenticated:
             return False
-        
-        return hasattr(request.user, 'lecturer_profile') and obj.course.instructor == request.user.lecturer_profile
+
+        return hasattr(request.user, 'lecturer_profile'
+                       ) and obj.course.instructor == request.user.lecturer_profile

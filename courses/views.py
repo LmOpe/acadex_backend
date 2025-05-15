@@ -116,8 +116,10 @@ class CourseEnrollmentView(APIView):
         serializer = CourseEnrollmentSerializer(enrollments, many=True)
         return Response(serializer.data)
 
+
 class StudentEnrollmentsView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = CourseEnrollmentSerializer
 
     @extend_schema(
         responses={
@@ -137,5 +139,5 @@ class StudentEnrollmentsView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         enrollments = CourseEnrollment.objects.filter(student=request.user.student_profile)
-        serializer = CourseEnrollmentSerializer(enrollments, many=True)
+        serializer = self.serializer_class(enrollments, many=True)
         return Response(serializer.data)
