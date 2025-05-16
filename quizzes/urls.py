@@ -15,4 +15,9 @@ urlpatterns = [
         views.QuestionCreateView.as_view(),
         name='question_create'
     ),
+    path(
+        '<uuid:quiz_id>/questions/<uuid:question_id>/',
+        views.QuestionUpdateView.as_view(),
+        name='question_update',
+    ),
 ]

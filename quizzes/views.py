@@ -20,6 +20,7 @@ from .serializers import (
     CourseNestedSerializer,
     QuizUpdateSerializer,
     QuestionCreateSerializer,
+    QuestionUpdateSerializer,
 )
 
 from acadex.permissions import IsCourseInstructor, IsLecturer
@@ -203,7 +204,7 @@ class QuizDetailView(APIView):
         responses={
             200: OpenApiResponse(
                 response=QuizSerializer,
-                description="Quiz details retrieved successfully.",
+                description="Quiz details updated successfully.",
                 examples=[
                     OpenApiExample(
                         name="Quiz Details",
@@ -223,8 +224,8 @@ class QuizDetailView(APIView):
             401: api_401,
             400: api_400,
         },
-        summary="Retrieve quiz details",
-        description="This endpoint allows instructors to retrieve details of a specific quiz.",
+        summary="Update quiz details",
+        description="This endpoint allows instructors to update details of a specific quiz.",
         tags=["Quizzes"],
     )
     def put(self, request, quiz_id, *args, **kwargs):
@@ -345,3 +346,89 @@ class QuestionCreateView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+class QuestionUpdateView(APIView):
+    permission_classes = [IsAuthenticated, IsCourseInstructor]
+    serializer_class = QuestionUpdateSerializer
+
+    @extend_schema(
+        request=QuestionUpdateSerializer,
+        responses={200: QuestionUpdateSerializer},
+        examples=[
+            OpenApiExample(
+                name="Update question and answers",
+                request_only=True,
+                value={
+                    "text": "What is the capital of France?",
+                    "answers": [
+                        {"id": "a1", "text": "Paris", "is_correct": True},
+                        {"id": "a2", "text": "London", "is_correct": False},
+                        {"id": "a3", "text": "Berlin", "is_correct": False},
+                        {"id": "a4", "text": "Madrid", "is_correct": False},
+                    ]
+                }
+            ),
+            OpenApiExample(
+                name="Successful update response",
+                response_only=True,
+                value={
+                    "id": "q1",
+                    "text": "What is the capital of France?",
+                    "answers": [
+                        {"id": "a1", "text": "Paris", "is_correct": True},
+                        {"id": "a2", "text": "London", "is_correct": False},
+                        {"id": "a3", "text": "Berlin", "is_correct": False},
+                        {"id": "a4", "text": "Madrid", "is_correct": False},
+                    ]
+                }
+            )
+        ],
+        description=(
+            "Update question and answers for a given quiz."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="quiz_id",
+                type=str,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="ID of the quiz"
+            ),
+            OpenApiParameter(
+                name="question_id",
+                type=str,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="ID of the question"
+            )
+        ]
+    )
+    def put(self, request, quiz_id, question_id):
+        try:
+            quiz = Quiz.objects.get(id=quiz_id)
+        except Quiz.DoesNotExist:
+            return Response(
+                {"detail": "Quiz not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        self.check_object_permissions(request, quiz)
+
+        try:
+            question = quiz.questions.get(id=question_id)
+        except Question.DoesNotExist:
+            return Response(
+                {"detail": "Question not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = self.serializer_class(question, data=request.data)
+        if serializer.is_valid():
+            updated_question = serializer.save()
+            return Response(
+                self.serializer_class(updated_question).data,
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
