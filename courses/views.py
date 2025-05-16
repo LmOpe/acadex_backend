@@ -13,8 +13,10 @@ from .serializers import CourseSerializer, CourseEnrollmentSerializer
 
 from acadex.schemas import api_400, api_401
 
+
 class CourseListCreateView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = CourseSerializer
 
     @extend_schema(
         request=CourseSerializer,
@@ -40,7 +42,10 @@ class CourseListCreateView(APIView):
                     "Only authenticated lecturer can access this endpoint.",
     )
     def post(self, request):
-        serializer = CourseSerializer(data=request.data, context={'request': request})
+        serializer = self.serializer_class(
+            data=request.data,
+            context={'request': request}
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -70,8 +75,10 @@ class CourseListCreateView(APIView):
         serializer = CourseSerializer(courses, many=True)
         return Response(serializer.data)
 
+
 class CourseEnrollmentView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = CourseEnrollmentSerializer
 
     @extend_schema(
         responses={
@@ -86,7 +93,7 @@ class CourseEnrollmentView(APIView):
     )
     def post(self, request, course_id):
         course = get_object_or_404(Course, course_id=course_id)
-        serializer = CourseEnrollmentSerializer(
+        serializer = self.serializer_class(
             data=request.data, 
             context={'request': request, 'course': course})
         if serializer.is_valid():
@@ -111,13 +118,18 @@ class CourseEnrollmentView(APIView):
                 {"detail": "You do not have permission to perform this action."},
                 status=status.HTTP_403_FORBIDDEN
             )
-        course = get_object_or_404(Course, course_id=course_id, instructor=request.user.lecturer_profile)
+        course = get_object_or_404(
+            Course,
+            course_id=course_id,
+            instructor=request.user.lecturer_profile)
         enrollments = CourseEnrollment.objects.filter(course=course)
         serializer = CourseEnrollmentSerializer(enrollments, many=True)
         return Response(serializer.data)
 
+
 class StudentEnrollmentsView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = CourseEnrollmentSerializer
 
     @extend_schema(
         responses={
@@ -137,5 +149,5 @@ class StudentEnrollmentsView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         enrollments = CourseEnrollment.objects.filter(student=request.user.student_profile)
-        serializer = CourseEnrollmentSerializer(enrollments, many=True)
+        serializer = self.serializer_class(enrollments, many=True)
         return Response(serializer.data)
