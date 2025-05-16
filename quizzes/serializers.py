@@ -100,9 +100,10 @@ class QuestionCreateSerializer(serializers.ModelSerializer):
         Ensures that at least one answer is marked as correct.
         Raises a validation error if no correct answer is provided.
         """
-        if not any(ans.get('is_correct') for ans in value):
+        correct_count = sum(bool(answer.get('is_correct')) for answer in value)
+        if correct_count != 1:
             raise serializers.ValidationError(
-                "At least one answer must be marked correct."
+                "Exactly one answer must be marked as correct."
             )
         return value
 
@@ -141,25 +142,46 @@ class QuestionUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         answers_data = validated_data.pop('answers', [])
 
-        if 'text' in validated_data:
-            instance.text = validated_data['text']
-            instance.save()
+        instance.text = validated_data.get('text', instance.text)
+        instance.save()
 
-        for answer_data in answers_data:
-            answer_id = answer_data.pop('id', None)
-            if not answer_id:
+        existing_answer_ids = {str(ans.id) for ans in instance.answers.all()}
+
+        for ans_data in answers_data:
+            ans_id = str(ans_data.get("id"))
+            if not ans_id or ans_id not in existing_answer_ids:
                 raise serializers.ValidationError({
-                    "answers": ["Each answer must include an 'id'."]
+                    "answers": f"Answer with id '{ans_id}' does not belong to this question."
                 })
 
-            try:
-                answer_instance = instance.answers.get(id=answer_id)
-                for attr, value in answer_data.items():
-                    setattr(answer_instance, attr, value)
-                answer_instance.save()
-            except Answer.DoesNotExist as e:
-                raise serializers.ValidationError({
-                    "answers": [f"Answer with id '{answer_id}' does not exist for this question."]
-                }) from e
+        answer_update_map = {str(a['id']): a for a in answers_data}
+        final_states = []
 
+        for answer in instance.answers.all():
+            if updated := answer_update_map.get(str(answer.id)):
+                is_correct = updated.get('is_correct', answer.is_correct)
+                if is_correct is not None:
+                    is_correct = bool(is_correct)
+                text = updated.get('text', answer.text)
+            else:
+                is_correct = answer.is_correct
+                text = answer.text
+
+            final_states.append({
+                'id': answer.id,
+                'text': text,
+                'is_correct': is_correct
+            })
+        if sum(bool(ans['is_correct']) for ans in final_states) != 1:
+            raise serializers.ValidationError({
+                "answers": "Exactly one answer must be marked as correct after update."
+            })
+
+        for answer in instance.answers.all():
+            if data := answer_update_map.get(str(answer.id)):
+                if 'text' in data:
+                    answer.text = data['text']
+                if 'is_correct' in data:
+                    answer.is_correct = bool(data['is_correct'])
+                answer.save()
         return instance
