@@ -76,7 +76,7 @@ class AnswerCreateSerializer(serializers.ModelSerializer):
 
 
 class QuestionCreateSerializer(serializers.ModelSerializer):
-    answers = AnswerCreateSerializer(many=True, write_only=True)
+    answers = AnswerCreateSerializer(many=True)
 
     class Meta:
         model = Question

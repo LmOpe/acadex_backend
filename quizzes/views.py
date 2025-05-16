@@ -7,12 +7,23 @@ from drf_spectacular.utils import (
     OpenApiParameter,
 )
 
+from django.shortcuts import get_object_or_404
+
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from courses.models import Course, CourseEnrollment
+
+from acadex.permissions import IsCourseInstructor, IsLecturer
+from acadex.schemas import (
+    api_400,
+    api_401,
+    api_403,
+    api_404,
+)
+from acadex.utils import str_to_bool
 
 from .models import Quiz, Question
 from .serializers import (
@@ -22,10 +33,6 @@ from .serializers import (
     QuestionCreateSerializer,
     QuestionUpdateSerializer,
 )
-
-from acadex.permissions import IsCourseInstructor, IsLecturer
-from acadex.schemas import api_400, api_401, api_403
-from acadex.utils import str_to_bool
 
 
 class QuizCreateView(APIView):
@@ -346,6 +353,67 @@ class QuestionCreateView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    @extend_schema(
+        summary="Retrieve Questions and Answers for a Quiz",
+        description="Returns all questions and their respective answers for a given quiz. "
+                    "Only instructors of the course associated with the quiz are authorized.",
+        parameters=[
+            OpenApiParameter(
+                name="quiz_id",
+                description="UUID of the quiz",
+                required=True,
+                type=str,
+                location=OpenApiParameter.PATH
+            )
+        ],
+        responses={
+            200: OpenApiResponse(
+                response=QuestionCreateSerializer(many=True),
+                description="Successfully retrieved questions and answers.",
+                examples=[
+                    OpenApiExample(
+                        "Success Response",
+                        value={
+                            "data": [
+                                {
+                                    "id": "416da1a7-21e8-45dd-bf58-5587a3f02aa9",
+                                    "text": "What is the capital of Nigeria?",
+                                    "answers": [
+                                        {"id": "52deaf52-8b01-4c69-b1a1-a6bb81c1964b", "text": "Lagos", "is_correct": False},
+                                        {"id": "3f734f0d-e2b7-4987-aa29-5da287c8a582", "text": "Abuja", "is_correct": True},
+                                        {"id": "d6a312cc-d9f5-4362-977a-cefee68f542e", "text": "Ibadan", "is_correct": False}
+                                    ]
+                                },
+                                {
+                                    "id": "0583453f-b67b-449f-9697-cf119e9bb33a",
+                                    "text": "Which planet is known as the Red Planet?",
+                                    "answers": [
+                                        {"id": "971f72f3-5884-4b85-844a-fd4b38b290e5", "text": "Earth", "is_correct": False},
+                                        {"id": "115bf8bc-02fd-42bf-80fe-dc96f8101194", "text": "Mars", "is_correct": True},
+                                        {"id": "e78c6897-5f11-472d-9d0c-cc9bf52058e3", "text": "Jupiter", "is_correct": False}
+                                    ]
+                                }
+                            ]
+                        },
+                    )
+                ]
+            ),
+            403: api_403,
+            401: api_401,
+            404: api_404,
+        }
+    )
+    def get(self, request, quiz_id):
+        quiz = get_object_or_404(Quiz, id=quiz_id)
+
+        self.check_object_permissions(request, quiz)
+
+        questions = Question.objects.filter(quiz=quiz).prefetch_related('answers')
+
+        serializer = QuestionCreateSerializer(questions, many=True)
+
+        return Response({"data": serializer.data}, status=status.HTTP_200_OK)
 
 
 class QuestionUpdateView(APIView):
