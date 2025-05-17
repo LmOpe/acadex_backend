@@ -16,7 +16,7 @@ from rest_framework.response import Response
 
 from courses.models import Course, CourseEnrollment
 
-from acadex.permissions import IsCourseInstructor
+from acadex.permissions import IsCourseInstructor, IsStudent
 from acadex.schemas import (
     api_400,
     api_401,
@@ -34,6 +34,8 @@ from .serializers import (
     QuestionUpdateSerializer,
     QuizAttemptCreationSerializer,
     QuizAttemptResponseSerializer,
+    StudentQuizSubmissionSerializer,
+    StudentQuizAnswerResponseSerializer,
 )
 
 
@@ -600,6 +602,10 @@ class AttemptQuizView(APIView):
                 {"detail": "You have already attempted this quiz."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not quiz.questions.exists():
+            return Response({
+                "detail": "No questions for this quiz yet."
+            })
 
         serializer = QuizAttemptCreationSerializer(
             data={},
@@ -620,3 +626,93 @@ class AttemptQuizView(APIView):
             "end_time": attempt.end_time,
             "quiz_questions": question_data,
         }, status=status.HTTP_201_CREATED)
+
+
+class SubmitQuizView(APIView):
+    """
+    Handles the submission of quiz answers by a student.
+
+    This view processes POST requests containing quiz responses,
+    validates the submitted data, calculates the student's score,
+    and saves the results. It also return feedback and the
+    final score to the student.
+    """
+    permission_classes = [IsAuthenticated, IsStudent]
+    serializer_class = StudentQuizSubmissionSerializer
+
+    @extend_schema(
+        request=StudentQuizSubmissionSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=StudentQuizAnswerResponseSerializer,
+                description="Quiz submitted successfully.",
+                examples=[
+                    OpenApiExample(
+                        name="Successful quiz submission",
+                        value={
+                            "score": 1,
+                            "answers": [
+                                {
+                                    "question_id": "e4aa891b-d8c2-4d8e-a6be-546d712f0f68",
+                                    "selected_option": "Abuja",
+                                    "is_correct": True
+                                },
+                                {
+                                    "question_id": "8d295f32-042e-4cb3-b5c3-baa57b07fa0d",
+                                    "selected_option": "Earth",
+                                    "is_correct": False,
+                                    "correct_option": "Mars"
+                                }
+                            ]
+                        },
+                        status_codes=["200"]
+                    )
+                ]
+            ),
+            400: api_400,
+            401: api_401,
+            403: api_403,
+            404: api_404,
+        },
+        examples=[
+            OpenApiExample(
+                name="Quiz submission request",
+                value={
+                    "attempt_id": "a1f9a746-0b34-4e65-81b7-859f4220540f",
+                    "answers": [
+                        {
+                            "question_id": "e4aa891b-d8c2-4d8e-a6be-546d712f0f68",
+                            "selected_option_id": "3f734f0d-e2b7-4987-aa29-5da287c8a582"
+                        },
+                        {
+                            "question_id": "8d295f32-042e-4cb3-b5c3-baa57b07fa0d",
+                            "selected_option_id": "971f72f3-5884-4b85-844a-fd4b38b290e5"
+                        }
+                    ]
+                },
+                request_only=True
+            )
+        ],
+        description="Allows a student to submit all their answers for a quiz attempt in bulk. "
+                    "Only the student who owns the attempt may submit. The score is calculated and each "
+                    "answer is marked as correct or incorrect. Correct options are returned for incorrect answers.",
+        tags=["Submit Quiz"],
+    )
+    def post(self, request):
+        attempt_id = request.data.get("attempt_id")
+        if not attempt_id:
+            return Response({
+                "detail": "Attempt ID is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        attempt = get_object_or_404(QuizAttempt, attempt_id=attempt_id)
+
+        if request.user.student_profile != attempt.student:
+            return Response({
+                "detail": "You are not authorized to submit this quiz."
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = StudentQuizSubmissionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)

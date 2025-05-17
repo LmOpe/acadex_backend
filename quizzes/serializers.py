@@ -265,6 +265,7 @@ class QuizAttemptCreationSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
         quiz = self.context.get("quiz")
         student = self.context.get("student")
@@ -287,3 +288,133 @@ class QuizAttemptResponseSerializer(serializers.Serializer):
     attempt_id = serializers.UUIDField()
     end_time = serializers.DateTimeField()
     quiz_questions = QuestionCreateSerializer(many=True)
+
+
+class StudentAnswerSubmissionSerializer(serializers.Serializer):
+    question_id = serializers.UUIDField()
+    selected_option_id = serializers.UUIDField()
+
+
+class StudentQuizSubmissionSerializer(serializers.Serializer):
+    attempt_id = serializers.UUIDField()
+    answers = StudentAnswerSubmissionSerializer(many=True)
+
+    def validate(self, data):
+        attempt = QuizAttempt.objects.select_related(
+            'quiz', 'student').get(attempt_id=data.get('attempt_id'))
+        now = timezone.now()
+        grace_period = timedelta(minutes=1)
+
+        if now > (attempt.end_time + grace_period):
+            raise serializers.ValidationError("Submission time has passed.")
+
+        if attempt.student_answers.exists():
+            raise serializers.ValidationError(
+                "You have already submitted this quiz."
+            )
+
+        self.context['attempt'] = attempt
+        return data
+
+    @transaction.atomic
+    def create(self, validated_data):
+        attempt = self.context.get('attempt')
+        answers_data = validated_data.get('answers')
+
+        correct_count = 0
+        response_data = []
+        answered_question_ids = set()
+
+        for answer_data in answers_data:
+            question_id = answer_data.get('question_id')
+            selected_option_id = answer_data.get('selected_option_id')
+
+            try:
+                question = Question.objects.get(
+                    id=question_id,
+                    quiz=attempt.quiz
+                )
+            except Question.DoesNotExist as e:
+                raise serializers.ValidationError({
+                    "question_id":
+                        f"Invalid question ID {question_id} for this quiz."
+                }) from e
+
+            try:
+                selected_option = Answer.objects.get(
+                    id=selected_option_id,
+                    question=question
+                )
+            except Answer.DoesNotExist as e:
+                raise serializers.ValidationError({
+                    "selected_option_id": (
+                        f"Invalid answer ID {selected_option_id}"
+                        f" for question {question_id}"
+                    )}) from e
+
+            is_correct = selected_option.is_correct
+            if is_correct:
+                correct_count += 1
+
+            StudentAnswer.objects.create(
+                attempt=attempt,
+                question=question,
+                selected_option=selected_option,
+                is_correct=is_correct,
+            )
+
+            answered_question_ids.add(question.id)
+
+            response_item = {
+                "question_id": str(question.id),
+                "question_text": question.text,
+                "selected_option_text": selected_option.text,
+                "is_correct": is_correct
+            }
+
+            if not is_correct:
+                if correct_option := question.answers.filter(
+                    is_correct=True
+                ).first():
+                    response_item["correct_option_text"] = correct_option.text
+
+            response_data.append(response_item)
+
+        # Handle unanswered questions
+        all_questions = Question.objects.filter(
+            quiz=attempt.quiz
+        ).prefetch_related('answers')
+        for question in all_questions:
+            if question.id not in answered_question_ids:
+                correct_option = question.answers.filter(
+                    is_correct=True
+                ).first()
+                response_data.append({
+                    "question_id": str(question.id),
+                    "question_text": question.text,
+                    "selected_option_text": None,
+                    "is_correct": False,
+                    "correct_option_text": (
+                        correct_option.text if correct_option else None
+                    )
+                })
+
+        attempt.score = correct_count
+        attempt.save()
+
+        return {
+            "score": correct_count,
+            "quiz_questions": response_data
+        }
+
+
+class StudentAnswerFeedbackSerializer(serializers.Serializer):
+    question_id = serializers.UUIDField()
+    selected_option = serializers.CharField()
+    is_correct = serializers.BooleanField()
+    correct_option = serializers.CharField(required=False)
+
+
+class StudentQuizAnswerResponseSerializer(serializers.Serializer):
+    score = serializers.IntegerField()
+    answers = StudentAnswerFeedbackSerializer(many=True)

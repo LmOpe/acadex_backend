@@ -25,4 +25,9 @@ urlpatterns = [
         views.AttemptQuizView.as_view(),
         name='quiz_attempt',
     ),
+    path(
+        'attempt/submit/',
+        views.SubmitQuizView.as_view(),
+        name='submit_quiz',
+    )
 ]
