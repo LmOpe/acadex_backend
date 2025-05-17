@@ -716,3 +716,177 @@ class SubmitQuizView(APIView):
         serializer.is_valid(raise_exception=True)
         result = serializer.save()
         return Response(result, status=status.HTTP_200_OK)
+
+
+class QuizAttemptListView(APIView):
+    permission_classes = [IsAuthenticated, IsCourseInstructor]
+
+    @extend_schema(
+        summary="List students who attempted a quiz",
+        description=(
+            "Returns a list of students who have attempted "
+            "the specified quiz, along with basic attempt metadata."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name='quiz_id',
+                description='UUID of the quiz',
+                required=True,
+                location=OpenApiParameter.PATH
+            )
+        ],
+        responses={
+            200: OpenApiResponse(
+                description="List of students with attempt status",
+                examples=[
+                    OpenApiExample(
+                        "Students List",
+                        value={
+                            "students": [
+                                {
+                                    "matric": "STU12345",
+                                    "name": "Jane Doe",
+                                    "score": 4,
+                                    "attempt_time": "2025-05-17T01:00:00Z",
+                                    "submitted": True
+                                },
+                                {
+                                    "matric": "STU54321",
+                                    "name": "John Smith",
+                                    "score": 0,
+                                    "attempt_time": "2025-05-17T02:00:00Z",
+                                    "submitted": False
+                                }
+                            ]
+                        }
+                    )
+                ]
+            ),
+            403: api_403,
+            404: api_404,
+            401: api_401
+        },
+        tags=["Quiz Attempts"],
+    )
+    def get(self, request, quiz_id):
+        quiz = get_object_or_404(Quiz, id=quiz_id)
+        self.check_object_permissions(request, quiz)
+
+        attempts = QuizAttempt.objects.filter(
+            quiz=quiz
+        ).select_related('student')
+
+        if not attempts:
+            return Response({
+                "detail": "No students has attempted this quiz yet."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        data = [
+            {
+                "student": str(attempt.student),
+                "score": attempt.score,
+                "attempt_time": attempt.attempt_time,
+                "submitted": attempt.student_answers.exists()
+            }
+            for attempt in attempts
+        ]
+
+        return Response({"students": data}, status=status.HTTP_200_OK)
+
+
+class StudentQuizResultView(APIView):
+    permission_classes = [IsAuthenticated, IsCourseInstructor]
+
+    @extend_schema(
+        summary="Fetch student quiz result",
+        description=(
+            "Retrieve submitted answers and score of a "
+            "student for a specific quiz."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name='quiz_id',
+                description='UUID of the quiz',
+                required=True,
+                location=OpenApiParameter.PATH
+            ),
+            OpenApiParameter(
+                name='student_matric',
+                description='Matric number of the student',
+                required=True,
+                location=OpenApiParameter.PATH
+            )
+        ],
+        responses={
+            200: OpenApiResponse(
+                response=StudentQuizAnswerResponseSerializer,
+                description="Student's quiz result",
+                examples=[
+                    OpenApiExample(
+                        "Quiz Result",
+                        value={
+                            "score": 3,
+                            "answers": [
+                                {
+                                    "question_id":
+                                        "d3ac1b4e-114a-4e83-8f60-bdfc9123a8a1",
+                                    "selected_option": "Paris",
+                                    "is_correct": True
+                                },
+                                {
+                                    "question_id":
+                                        "b2e8fa7e-27ff-4e3a-a972-fc1d821b9c7c",
+                                    "selected_option": "Mars",
+                                    "is_correct": False,
+                                    "correct_option": "Jupiter"
+                                }
+                            ]
+                        }
+                    )
+                ]
+            ),
+            400: api_400,
+            403: api_403,
+            404: api_404
+        },
+        tags=["Quiz Attempts"],
+    )
+    def get(self, request, quiz_id, student_matric):
+        quiz = get_object_or_404(Quiz, id=quiz_id)
+        self.check_object_permissions(request, quiz)
+
+        attempt = get_object_or_404(
+            QuizAttempt.objects.select_related('student'),
+            quiz=quiz,
+            student__matric_number=student_matric
+        )
+
+        if not attempt.student_answers.exists():
+            return Response(
+                {"detail": "Student has not submitted this quiz."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        answers = []
+        for ans in attempt.student_answers.select_related(
+            'question',
+            'selected_option'
+        ):
+            feedback = {
+                "question_id": ans.question.id,
+                "selected_option": ans.selected_option.text,
+                "is_correct": ans.is_correct,
+            }
+            if not ans.is_correct:
+                if correct_option := ans.question.answers.filter(
+                    is_correct=True
+                ).first():
+                    feedback["correct_option"] = correct_option.text
+            answers.append(feedback)
+
+        serializer = StudentQuizAnswerResponseSerializer({
+            "score": attempt.score,
+            "answers": answers
+        })
+
+        return Response(serializer.data, status=status.HTTP_200_OK)

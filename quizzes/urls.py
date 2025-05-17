@@ -29,5 +29,15 @@ urlpatterns = [
         'attempt/submit/',
         views.SubmitQuizView.as_view(),
         name='submit_quiz',
+    ),
+    path(
+        '<uuid:quiz_id>/attempts/',
+        views.QuizAttemptListView.as_view(),
+        name='fetch_quiz_attempts',
+    ),
+    path(
+        '<uuid:quiz_id>/<str:student_matric>/result/',
+        views.StudentQuizResultView.as_view(),
+        name='fetch_student_result',
     )
 ]
