@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 from django.db import transaction
@@ -5,7 +6,13 @@ from django.db import transaction
 
 from courses.models import Course
 
-from .models import Quiz, Question, Answer
+from .models import (
+    Quiz,
+    Question,
+    Answer,
+    QuizAttempt,
+    StudentAnswer,
+)
 
 
 class QuizSerializer(serializers.ModelSerializer):
@@ -232,3 +239,51 @@ class QuestionUpdateSerializer(serializers.ModelSerializer):
                     answer.is_correct = bool(data['is_correct'])
                 answer.save()
         return instance
+
+
+class QuizAttemptCreationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuizAttempt
+        fields = ['attempt_id', 'attempt_time', 'end_time']
+        read_only_fields = ['attempt_id', 'attempt_time', 'end_time']
+
+    def validate(self, attrs):
+        quiz = self.context.get('quiz')
+        student = self.context.get('student')
+
+        if not quiz or not student:
+            raise serializers.ValidationError("Quiz and student must be provided.")
+
+        if QuizAttempt.objects.filter(quiz=quiz, student=student).exists():
+            raise serializers.ValidationError("You have already attempted this quiz.")
+
+        now = timezone.now()
+        if quiz.start_date_time > now:
+            raise serializers.ValidationError("Quiz has not started yet.")
+        if quiz.end_date_time < now:
+            raise serializers.ValidationError("Quiz has already ended.")
+
+        return attrs
+
+    def create(self, validated_data):
+        quiz = self.context.get("quiz")
+        student = self.context.get("student")
+        now = timezone.now()
+
+        allotted = quiz.allotted_time or timedelta()
+        scheduled_end = quiz.end_date_time
+        calculated_end = now + allotted
+        final_end = min(calculated_end, scheduled_end)
+
+        return QuizAttempt.objects.create(
+            quiz=quiz,
+            student=student,
+            attempt_time=now,
+            end_time=final_end
+        )
+
+
+class QuizAttemptResponseSerializer(serializers.Serializer):
+    attempt_id = serializers.UUIDField()
+    end_time = serializers.DateTimeField()
+    quiz_questions = QuestionCreateSerializer(many=True)

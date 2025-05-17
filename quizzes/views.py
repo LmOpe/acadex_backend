@@ -16,7 +16,7 @@ from rest_framework.response import Response
 
 from courses.models import Course, CourseEnrollment
 
-from acadex.permissions import IsCourseInstructor, IsLecturer
+from acadex.permissions import IsCourseInstructor
 from acadex.schemas import (
     api_400,
     api_401,
@@ -25,13 +25,15 @@ from acadex.schemas import (
 )
 from acadex.utils import str_to_bool
 
-from .models import Quiz, Question
+from .models import Quiz, Question, QuizAttempt
 from .serializers import (
     QuizSerializer,
     CourseNestedSerializer,
     QuizUpdateSerializer,
     QuestionCreateSerializer,
     QuestionUpdateSerializer,
+    QuizAttemptCreationSerializer,
+    QuizAttemptResponseSerializer,
 )
 
 
@@ -267,7 +269,12 @@ class QuestionCreateView(APIView):
 
     @extend_schema(
         request=QuestionCreateSerializer(many=True),
-        responses={201: QuestionCreateSerializer(many=True)},
+        responses={
+            201: QuestionCreateSerializer(many=True),
+            400: api_400,
+            401: api_401,
+            403: api_403,
+            },
         examples=[
             OpenApiExample(
                 name="Bulk Question and Answer Creation",
@@ -304,7 +311,8 @@ class QuestionCreateView(APIView):
                 required=True,
                 description="ID of the quiz"
             )
-        ]
+        ],
+        tags=["Quiz Questions"],
     )
     def post(self, request, quiz_id):
         try:
@@ -402,7 +410,8 @@ class QuestionCreateView(APIView):
             403: api_403,
             401: api_401,
             404: api_404,
-        }
+        },
+        tags=["Quiz Questions"],
     )
     def get(self, request, quiz_id):
         quiz = get_object_or_404(Quiz, id=quiz_id)
@@ -470,7 +479,8 @@ class QuestionUpdateView(APIView):
                 required=True,
                 description="ID of the question"
             )
-        ]
+        ],
+        tags=["Quiz Questions"],
     )
     def put(self, request, quiz_id, question_id):
         try:
@@ -500,3 +510,113 @@ class QuestionUpdateView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AttemptQuizView(APIView):
+    """
+    Allows a student to attempt a quiz. Requires enrollment in the course.
+    Returns quiz questions and attempt end time.
+    """
+    @extend_schema(
+        summary="Attempt a quiz",
+        description=(
+            "Allows an enrolled student to begin a quiz attempt. "
+            "A student can only attempt a quiz once. "
+            "The system automatically records the attempt "
+            "and returns the quiz questions and calculated end time."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name='quiz_id',
+                description='The UUID of the quiz to attempt',
+                required=True,
+                location=OpenApiParameter.PATH,
+                type=str
+            )
+        ],
+        responses={
+            201: OpenApiResponse(
+                description="Quiz attempt created successfully",
+                response=QuizAttemptResponseSerializer,
+                examples=[
+                    OpenApiExample(
+                        name="Successful Attempt",
+                        value={
+                            "attempt_id": "bdbe6c80-7e6e-4a56-8d7b-73fc820aadcf",
+                            "end_time": "2025-05-17T02:45:00Z",
+                            "quiz_questions": [
+                                {
+                                    "id": "416da1a7-21e8-45dd-bf58-5587a3f02aa9",
+                                    "text": "What is the capital of Nigeria?",
+                                    "answers": [
+                                        {
+                                            "id": "52deaf52-8b01-4c69-b1a1-a6bb81c1964b",
+                                            "text": "Lagos",
+                                            "is_correct": False
+                                        },
+                                        {
+                                            "id": "3f734f0d-e2b7-4987-aa29-5da287c8a582",
+                                            "text": "Abuja",
+                                            "is_correct": True
+                                        },
+                                        {
+                                            "id": "d6a312cc-d9f5-4362-977a-cefee68f542e",
+                                            "text": "Ibadan",
+                                            "is_correct": False
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    )
+                ]
+            ),
+            400: api_400,
+            403: api_403,
+            404: api_404,
+        },
+        request=None,
+        tags=["Quiz Attempts"]
+    )
+    def post(self, request, quiz_id):
+        quiz = get_object_or_404(Quiz, id=quiz_id)
+
+        student = getattr(request.user, 'student_profile', None)
+        if not student:
+            return Response(
+                {"detail": "User is not a student."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not CourseEnrollment.objects.filter(
+            student=student, course=quiz.course
+        ).exists():
+            return Response(
+                {"detail": "You are not enrolled in this course."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if QuizAttempt.objects.filter(student=student, quiz=quiz).exists():
+            return Response(
+                {"detail": "You have already attempted this quiz."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = QuizAttemptCreationSerializer(
+            data={},
+            context={'quiz': quiz, 'student': student},
+        )
+        serializer.is_valid(raise_exception=True)
+        attempt = serializer.save()
+
+        questions = Question.objects.filter(
+            quiz=quiz
+            ).prefetch_related(
+                'answers'
+            )
+        question_data = QuestionCreateSerializer(questions, many=True).data
+
+        return Response({
+            "attempt_id": str(attempt.attempt_id),
+            "end_time": attempt.end_time,
+            "quiz_questions": question_data,
+        }, status=status.HTTP_201_CREATED)
