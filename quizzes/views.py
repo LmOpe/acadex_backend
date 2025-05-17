@@ -69,7 +69,7 @@ class QuizCreateView(APIView):
             400: api_400,
         },
         summary="Create a new quiz",
-        description="This endpoint allows instructors to create a new quiz for a specific course. The instructor must be enrolled in the course to create a quiz.",
+        description="This endpoint allows course instructors to create a new quiz for a specific course.",
         tags=["Quizzes"],
     )
     def post(self, request, *args, **kwargs):

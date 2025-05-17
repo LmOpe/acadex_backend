@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 from django.db import transaction
 
@@ -26,6 +27,29 @@ class QuizSerializer(serializers.ModelSerializer):
             'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        start = attrs.get('start_date_time') or getattr(self.instance, 'start_date_time', None)
+        end = attrs.get('end_date_time') or getattr(self.instance, 'end_date_time', None)
+
+        if start and end and start >= end:
+            raise serializers.ValidationError("Start date/time must be before end date/time.")
+
+        now = timezone.now()
+
+        if start and start.date() < now.date():
+            raise serializers.ValidationError("Start date must be today or in the future.")
+
+        if end and end.date() < now.date():
+            raise serializers.ValidationError("End date must be today or in the future.")
+
+        if start and start.date() == now.date() and start <= now:
+            raise serializers.ValidationError("Start time must be in the future if set for today.")
+
+        if end and end.date() == now.date() and end <= now:
+            raise serializers.ValidationError("End time must be in the future if set for today.")
+
+        return attrs
 
 
 class CourseNestedSerializer(serializers.ModelSerializer):
@@ -66,6 +90,29 @@ class QuizUpdateSerializer(serializers.ModelSerializer):
             })
 
         return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        start = attrs.get('start_date_time') or getattr(self.instance, 'start_date_time', None)
+        end = attrs.get('end_date_time') or getattr(self.instance, 'end_date_time', None)
+
+        if start and end and start >= end:
+            raise serializers.ValidationError("Start date/time must be before end date/time.")
+
+        now = timezone.now()
+
+        if start and start.date() < now.date():
+            raise serializers.ValidationError("Start date must be today or in the future.")
+
+        if end and end.date() < now.date():
+            raise serializers.ValidationError("End date must be today or in the future.")
+
+        if start and start.date() == now.date() and start <= now:
+            raise serializers.ValidationError("Start time must be in the future if set for today.")
+
+        if end and end.date() == now.date() and end <= now:
+            raise serializers.ValidationError("End time must be in the future if set for today.")
+
+        return attrs
 
 
 class AnswerCreateSerializer(serializers.ModelSerializer):

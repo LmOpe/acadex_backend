@@ -41,6 +41,7 @@ class StudentRegistrationView(APIView):
                 request_only=True,
             )
         ],
+        auth=[],
     )
     def post(self, request):
         serializer = StudentSerializer(data=request.data)
@@ -77,6 +78,7 @@ class LecturerRegistrationView(APIView):
                 request_only=True,
             )
         ],
+        auth=[],
     )
     def post(self, request):
         serializer = LecturerSerializer(data=request.data)
@@ -115,7 +117,8 @@ class LoginView(APIView):
         summary="Login with credentials",
         description="Login with matric_number/password for students or \
             staff_id/password for lecturers",
-        tags=["auth"]
+        tags=["auth"],
+        auth=[],
     )
     def post(self, request, *args, **kwargs):
         serializer = LoginSerializer(data=request.data)

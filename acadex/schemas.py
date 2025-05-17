@@ -19,7 +19,7 @@ class Error403Serializer(Serializer):
 
 
 class Error404Serializer(Serializer):
-    detail = CharField(example="Not found.", help_text="Error message")
+    detail = CharField(default="Not found.", help_text="Error message")
 
 
 api_400 = OpenApiResponse(
