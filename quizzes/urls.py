@@ -36,8 +36,18 @@ urlpatterns = [
         name='fetch_quiz_attempts',
     ),
     path(
-        '<uuid:quiz_id>/<str:student_matric>/result/',
+        'results/<uuid:quiz_id>/<str:student_matric>/',
         views.StudentQuizResultView.as_view(),
         name='fetch_student_result',
-    )
+    ),
+    path(
+        'students/attempts/',
+        views.StudentAttemptedQuizzesView.as_view(),
+        name='student_quiz_attempts',
+    ),
+    path(
+        '<uuid:quiz_id>/students/result/',
+        views.StudentOwnQuizResultView.as_view(),
+        name='student_quiz_results',
+    ),
 ]

@@ -890,3 +890,150 @@ class StudentQuizResultView(APIView):
         })
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class StudentAttemptedQuizzesView(APIView):
+    permission_classes = [IsAuthenticated, IsStudent]
+
+    @extend_schema(
+        summary="List quizzes attempted by the student",
+        description=(
+            "Returns a list of quizzes the authenticated "
+            "student has attempted."
+        ),
+        responses={
+            200: OpenApiResponse(
+                description="List of attempted quizzes",
+                examples=[
+                    {
+                        "quizzes": [
+                            {
+                                "quiz_id": "5505eb31-4565-45ce-8b2c-ce6af2ff9182",
+                                "title": "Midterm",
+                                "attempt_time": "2025-05-17T01:00:00Z",
+                                "score": 7,
+                                "submitted": True
+                            },
+                            {
+                                "quiz_id": "810eaedb-8748-446d-9316-500e21bef8fd",
+                                "title": "Final Exam",
+                                "attempt_time": "2025-05-18T14:00:00Z",
+                                "score": 0,
+                                "submitted": False
+                            }
+                        ]
+                    }
+                ]
+            ),
+            401: api_401,
+            403: api_403,
+            404: api_404
+        }
+    )
+    def get(self, request):
+        student = request.user.student_profile
+        attempts = QuizAttempt.objects.filter(
+            student=student
+        ).select_related("quiz")
+
+        if not attempts:
+            return Response({
+                "detail": "You are yet to attempt any quiz"
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        data = [
+            {
+                "quiz_id": str(attempt.quiz.id),
+                "title": attempt.quiz.title,
+                "attempt_time": attempt.attempt_time,
+                "score":
+                    attempt.score if attempt.student_answers.exists() else 0,
+                "submitted": attempt.student_answers.exists()
+            }
+            for attempt in attempts
+        ]
+
+        return Response({"quizzes": data}, status=status.HTTP_200_OK)
+
+
+class StudentOwnQuizResultView(APIView):
+    permission_classes = [IsAuthenticated, IsStudent]
+
+    @extend_schema(
+        summary="View student's own quiz result",
+        description=(
+            "Returns the result and feedback for the student's "
+            "own attempt on a quiz."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="quiz_id",
+                location=OpenApiParameter.PATH,
+                required=True,
+                description="Quiz UUID"
+            )
+        ],
+        responses={
+            200: OpenApiResponse(
+                response=StudentQuizAnswerResponseSerializer,
+                description="Result details with answer correctness feedback",
+                examples=[
+                    OpenApiExample(
+                        "Result example",
+                        value={
+                            "score": 1,
+                            "answers": [
+                                {
+                                    "question_id": "fc7a37d3-0632-4a3c-8ff7-b21f7ce79957",
+                                    "selected_option": "Option A",
+                                    "is_correct": True
+                                },
+                                {
+                                    "question_id": "3bd7d5f0-9870-4a52-97ce-f7d4f83d3fcb",
+                                    "selected_option": "Option C",
+                                    "is_correct": False,
+                                    "correct_option": "Option B"
+                                }
+                            ]
+                        },
+                        response_only=True
+                    )
+                ]
+            ),
+            400: api_400,
+            404: api_404,
+            403: api_403
+        }
+    )
+    def get(self, request, quiz_id):
+        student = request.user.student_profile
+        attempt = get_object_or_404(
+            QuizAttempt,
+            quiz__id=quiz_id,
+            student=student
+        )
+
+        if not attempt.student_answers.exists():
+            return Response({"detail": "Quiz not yet submitted."}, status=400)
+
+        answers = []
+        for answer in attempt.student_answers.select_related(
+            'question',
+            'selected_option'
+        ):
+            feedback = {
+                "question_id": str(answer.question.id),
+                "selected_option": answer.selected_option.text,
+                "is_correct": answer.is_correct
+            }
+            if not answer.is_correct:
+                if correct := answer.question.answers.filter(
+                    is_correct=True
+                ).first():
+                    feedback["correct_option"] = correct.text
+            answers.append(feedback)
+
+        return Response({
+            "score": attempt.score,
+            "answers": answers
+        })
