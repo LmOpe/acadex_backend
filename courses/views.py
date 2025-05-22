@@ -71,6 +71,9 @@ class CourseListCreateView(APIView):
             filters |= Q(instructor__user__first_name__icontains=query)
             filters |= Q(instructor__user__last_name__icontains=query)
 
+        if hasattr(request.user, 'lecturer_profile'):
+            filters &= Q(instructor_id=request.user.lecturer_profile)
+
         courses = Course.objects.filter(filters).distinct().order_by('course_code')
         serializer = CourseSerializer(courses, many=True)
         return Response(serializer.data)

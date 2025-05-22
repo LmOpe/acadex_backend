@@ -239,7 +239,7 @@ class QuizDetailView(APIView):
         description="This endpoint allows instructors to update details of a specific quiz.",
         tags=["Quizzes"],
     )
-    def put(self, request, quiz_id, *args, **kwargs):
+    def patch(self, request, quiz_id, *args, **kwargs):
         try:
             quiz = Quiz.objects.get(id=quiz_id)
         except Quiz.DoesNotExist:
@@ -484,7 +484,7 @@ class QuestionUpdateView(APIView):
         ],
         tags=["Quiz Questions"],
     )
-    def put(self, request, quiz_id, question_id):
+    def patch(self, request, quiz_id, question_id):
         try:
             quiz = Quiz.objects.get(id=quiz_id)
         except Quiz.DoesNotExist:
