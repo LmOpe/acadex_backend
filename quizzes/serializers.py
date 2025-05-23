@@ -128,6 +128,13 @@ class AnswerCreateSerializer(serializers.ModelSerializer):
         fields = ['id', 'text', 'is_correct']
         read_only_fields = ['id']
 
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        include_correct = self.context.get('include_correct', True)
+        if not include_correct:
+            rep.pop('is_correct', None)
+        return rep
+
 
 class QuestionCreateSerializer(serializers.ModelSerializer):
     answers = AnswerCreateSerializer(many=True)
@@ -136,13 +143,6 @@ class QuestionCreateSerializer(serializers.ModelSerializer):
         model = Question
         fields = ['id', 'text', 'answers']
         read_only_fields = ['id']
-
-    def to_representation(self, instance):
-        rep = super().to_representation(instance)
-        include_correct = self.context.get('include_correct', True)
-        if not include_correct:
-            rep.pop('is_correct', None)
-        return rep
 
     @transaction.atomic
     def create(self, validated_data):
