@@ -137,6 +137,13 @@ class QuestionCreateSerializer(serializers.ModelSerializer):
         fields = ['id', 'text', 'answers']
         read_only_fields = ['id']
 
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        include_correct = self.context.get('include_correct', True)
+        if not include_correct:
+            rep.pop('is_correct', None)
+        return rep
+
     @transaction.atomic
     def create(self, validated_data):
         quiz = self.context.get('quiz')

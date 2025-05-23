@@ -142,9 +142,7 @@ class QuizListView(APIView):
                     )
                 ],
             ),
-            403: api_403,
             401: api_401,
-            400: api_400,
         },
         parameters=[
             OpenApiParameter(
@@ -576,6 +574,7 @@ class AttemptQuizView(APIView):
             400: api_400,
             403: api_403,
             404: api_404,
+            401: api_401,
         },
         request=None,
         tags=["Quiz Attempts"]
@@ -619,7 +618,11 @@ class AttemptQuizView(APIView):
             ).prefetch_related(
                 'answers'
             )
-        question_data = QuestionCreateSerializer(questions, many=True).data
+        question_data = QuestionCreateSerializer(
+            questions,
+            many=True,
+            context={'include_correct': False}
+        ).data
 
         return Response({
             "attempt_id": str(attempt.attempt_id),
