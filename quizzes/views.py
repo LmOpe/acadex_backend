@@ -951,7 +951,7 @@ class StudentAttemptedQuizzesView(APIView):
                 "attempt_time": attempt.attempt_time,
                 "score":
                     attempt.score if attempt.student_answers.exists() else 0,
-                "submitted": attempt.student_answers.exists()
+                "submitted": attempt.submitted
             }
             for attempt in attempts
         ]
