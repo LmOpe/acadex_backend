@@ -872,17 +872,16 @@ class StudentQuizResultView(APIView):
 
         answers = []
 
-        # Index student answers by question ID for fast lookup
+        # Index student answers by question ID
         student_answer_map = {
-            str(ans.question_id): ans for ans in attempt.student_answers.select_related(
+            str(ans.question.id): ans for ans in attempt.student_answers.select_related(
                 'question', 'selected_option'
             )
         }
 
-        # Go through all quiz questions
-        for question in attempt.quiz.quiz_questions.select_related('question').prefetch_related('question__answers'):
-            q = question.question
-            q_id = str(q.id)
+        # Go through all questions in the quiz
+        for question in attempt.quiz.questions.prefetch_related('answers'):
+            q_id = str(question.id)
             feedback = {
                 "question_id": q_id,
                 "selected_option": None,
@@ -892,15 +891,15 @@ class StudentQuizResultView(APIView):
             student_answer = student_answer_map.get(q_id)
 
             if student_answer:
-                feedback["selected_option"] = student_answer.selected_option.text if student_answer.selected_option else None
+                feedback["selected_option"] = student_answer.selected_option.text
                 feedback["is_correct"] = student_answer.is_correct
                 if not student_answer.is_correct:
-                    correct = q.answers.filter(is_correct=True).first()
+                    correct = question.answers.filter(is_correct=True).first()
                     if correct:
                         feedback["correct_option"] = correct.text
             else:
-                # No answer was selected for this question
-                correct = q.answers.filter(is_correct=True).first()
+                # Unanswered question
+                correct = question.answers.filter(is_correct=True).first()
                 if correct:
                     feedback["correct_option"] = correct.text
 
@@ -1040,19 +1039,16 @@ class StudentOwnQuizResultView(APIView):
 
         answers = []
 
-        # Index student answers by question ID for fast lookup
+        # Index student answers by question ID
         student_answer_map = {
-            str(ans.question_id): ans for ans in attempt.student_answers.select_related(
+            str(ans.question.id): ans for ans in attempt.student_answers.select_related(
                 'question', 'selected_option'
             )
         }
 
-        # Go through all quiz questions
-        for question in attempt.quiz.quiz_questions.select_related(
-            'question'
-        ).prefetch_related('question__answers'):
-            q = question.question
-            q_id = str(q.id)
+        # Go through all questions in the quiz
+        for question in attempt.quiz.questions.prefetch_related('answers'):
+            q_id = str(question.id)
             feedback = {
                 "question_id": q_id,
                 "selected_option": None,
@@ -1062,15 +1058,15 @@ class StudentOwnQuizResultView(APIView):
             student_answer = student_answer_map.get(q_id)
 
             if student_answer:
-                feedback["selected_option"] = student_answer.selected_option.text if student_answer.selected_option else None
+                feedback["selected_option"] = student_answer.selected_option.text
                 feedback["is_correct"] = student_answer.is_correct
                 if not student_answer.is_correct:
-                    correct = q.answers.filter(is_correct=True).first()
+                    correct = question.answers.filter(is_correct=True).first()
                     if correct:
                         feedback["correct_option"] = correct.text
             else:
-                # No answer was selected for this question
-                correct = q.answers.filter(is_correct=True).first()
+                # Unanswered question
+                correct = question.answers.filter(is_correct=True).first()
                 if correct:
                     feedback["correct_option"] = correct.text
 
