@@ -864,27 +864,46 @@ class StudentQuizResultView(APIView):
             student__matric_number=student_matric
         )
 
-        if not attempt.student_answers.exists():
+        if not attempt.submitted:
             return Response(
                 {"detail": "Student has not submitted this quiz."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
         answers = []
-        for ans in attempt.student_answers.select_related(
-            'question',
-            'selected_option'
-        ):
+
+        # Index student answers by question ID for fast lookup
+        student_answer_map = {
+            str(ans.question_id): ans for ans in attempt.student_answers.select_related(
+                'question', 'selected_option'
+            )
+        }
+
+        # Go through all quiz questions
+        for question in attempt.quiz.quiz_questions.select_related('question').prefetch_related('question__answers'):
+            q = question.question
+            q_id = str(q.id)
             feedback = {
-                "question_id": ans.question.id,
-                "selected_option": ans.selected_option.text,
-                "is_correct": ans.is_correct,
+                "question_id": q_id,
+                "selected_option": None,
+                "is_correct": False
             }
-            if not ans.is_correct:
-                if correct_option := ans.question.answers.filter(
-                    is_correct=True
-                ).first():
-                    feedback["correct_option"] = correct_option.text
+
+            student_answer = student_answer_map.get(q_id)
+
+            if student_answer:
+                feedback["selected_option"] = student_answer.selected_option.text if student_answer.selected_option else None
+                feedback["is_correct"] = student_answer.is_correct
+                if not student_answer.is_correct:
+                    correct = q.answers.filter(is_correct=True).first()
+                    if correct:
+                        feedback["correct_option"] = correct.text
+            else:
+                # No answer was selected for this question
+                correct = q.answers.filter(is_correct=True).first()
+                if correct:
+                    feedback["correct_option"] = correct.text
+
             answers.append(feedback)
 
         serializer = StudentQuizAnswerResponseSerializer({
@@ -1016,24 +1035,45 @@ class StudentOwnQuizResultView(APIView):
             student=student
         )
 
-        if not attempt.student_answers.exists():
+        if not attempt.submitted:
             return Response({"detail": "Quiz not yet submitted."}, status=400)
 
         answers = []
-        for answer in attempt.student_answers.select_related(
-            'question',
-            'selected_option'
-        ):
+
+        # Index student answers by question ID for fast lookup
+        student_answer_map = {
+            str(ans.question_id): ans for ans in attempt.student_answers.select_related(
+                'question', 'selected_option'
+            )
+        }
+
+        # Go through all quiz questions
+        for question in attempt.quiz.quiz_questions.select_related(
+            'question'
+        ).prefetch_related('question__answers'):
+            q = question.question
+            q_id = str(q.id)
             feedback = {
-                "question_id": str(answer.question.id),
-                "selected_option": answer.selected_option.text,
-                "is_correct": answer.is_correct
+                "question_id": q_id,
+                "selected_option": None,
+                "is_correct": False
             }
-            if not answer.is_correct:
-                if correct := answer.question.answers.filter(
-                    is_correct=True
-                ).first():
+
+            student_answer = student_answer_map.get(q_id)
+
+            if student_answer:
+                feedback["selected_option"] = student_answer.selected_option.text if student_answer.selected_option else None
+                feedback["is_correct"] = student_answer.is_correct
+                if not student_answer.is_correct:
+                    correct = q.answers.filter(is_correct=True).first()
+                    if correct:
+                        feedback["correct_option"] = correct.text
+            else:
+                # No answer was selected for this question
+                correct = q.answers.filter(is_correct=True).first()
+                if correct:
                     feedback["correct_option"] = correct.text
+
             answers.append(feedback)
 
         return Response({
