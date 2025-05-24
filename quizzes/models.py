@@ -86,6 +86,7 @@ class QuizAttempt(models.Model):
     score = models.PositiveIntegerField(default=0)
     attempt_time = models.DateTimeField(default=timezone.now)
     end_time = models.DateTimeField()
+    submitted = models.BooleanField(default=False)
 
     class Mete:
         unique_together = ('quiz', 'student')

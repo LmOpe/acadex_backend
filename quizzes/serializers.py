@@ -332,60 +332,61 @@ class StudentQuizSubmissionSerializer(serializers.Serializer):
         response_data = []
         answered_question_ids = set()
 
-        for answer_data in answers_data:
-            question_id = answer_data.get('question_id')
-            selected_option_id = answer_data.get('selected_option_id')
+        if answers_data:
+            for answer_data in answers_data:
+                question_id = answer_data.get('question_id')
+                selected_option_id = answer_data.get('selected_option_id')
 
-            try:
-                question = Question.objects.get(
-                    id=question_id,
-                    quiz=attempt.quiz
+                try:
+                    question = Question.objects.get(
+                        id=question_id,
+                        quiz=attempt.quiz
+                    )
+                except Question.DoesNotExist as e:
+                    raise serializers.ValidationError({
+                        "question_id":
+                            f"Invalid question ID {question_id} for this quiz."
+                    }) from e
+
+                try:
+                    selected_option = Answer.objects.get(
+                        id=selected_option_id,
+                        question=question
+                    )
+                except Answer.DoesNotExist as e:
+                    raise serializers.ValidationError({
+                        "selected_option_id": (
+                            f"Invalid answer ID {selected_option_id}"
+                            f" for question {question_id}"
+                        )}) from e
+
+                is_correct = selected_option.is_correct
+                if is_correct:
+                    correct_count += 1
+
+                StudentAnswer.objects.create(
+                    attempt=attempt,
+                    question=question,
+                    selected_option=selected_option,
+                    is_correct=is_correct,
                 )
-            except Question.DoesNotExist as e:
-                raise serializers.ValidationError({
-                    "question_id":
-                        f"Invalid question ID {question_id} for this quiz."
-                }) from e
 
-            try:
-                selected_option = Answer.objects.get(
-                    id=selected_option_id,
-                    question=question
-                )
-            except Answer.DoesNotExist as e:
-                raise serializers.ValidationError({
-                    "selected_option_id": (
-                        f"Invalid answer ID {selected_option_id}"
-                        f" for question {question_id}"
-                    )}) from e
+                answered_question_ids.add(question.id)
 
-            is_correct = selected_option.is_correct
-            if is_correct:
-                correct_count += 1
+                response_item = {
+                    "question_id": str(question.id),
+                    "question_text": question.text,
+                    "selected_option_text": selected_option.text,
+                    "is_correct": is_correct
+                }
 
-            StudentAnswer.objects.create(
-                attempt=attempt,
-                question=question,
-                selected_option=selected_option,
-                is_correct=is_correct,
-            )
+                if not is_correct:
+                    if correct_option := question.answers.filter(
+                        is_correct=True
+                    ).first():
+                        response_item["correct_option_text"] = correct_option.text
 
-            answered_question_ids.add(question.id)
-
-            response_item = {
-                "question_id": str(question.id),
-                "question_text": question.text,
-                "selected_option_text": selected_option.text,
-                "is_correct": is_correct
-            }
-
-            if not is_correct:
-                if correct_option := question.answers.filter(
-                    is_correct=True
-                ).first():
-                    response_item["correct_option_text"] = correct_option.text
-
-            response_data.append(response_item)
+                response_data.append(response_item)
 
         # Handle unanswered questions
         all_questions = Question.objects.filter(
@@ -407,6 +408,7 @@ class StudentQuizSubmissionSerializer(serializers.Serializer):
                 })
 
         attempt.score = correct_count
+        attempt.submitted = True
         attempt.save()
 
         return {

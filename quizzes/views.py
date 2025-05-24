@@ -789,7 +789,7 @@ class QuizAttemptListView(APIView):
                 "student": str(attempt.student),
                 "score": attempt.score,
                 "attempt_time": attempt.attempt_time,
-                "submitted": attempt.student_answers.exists()
+                "submitted": attempt.submitted
             }
             for attempt in attempts
         ]
